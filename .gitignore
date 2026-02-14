@@ -1,0 +1,44 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.meta
+
+# Rider
+.idea/
+*.sln.iml
+
+# User-specific
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+
+# Test / coverage
+[Tt]est[Rr]esult*/
+[Cc]overage/
+*.trx
+*.coverage
+*.coveragexml
+
+# macOS
+.DS_Store

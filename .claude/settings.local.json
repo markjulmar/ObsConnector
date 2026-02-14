@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet new:*)",
+      "Bash(dotnet sln:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet build:*)",
+      "Bash(timeout 5 dotnet run:*)",
+      "Bash(/tmp/bad_mapping.json:*)",
+      "Bash(dotnet run:*)",
+      "Bash(echo:*)",
+      "mcp__claude_ai_Microsoft_Learn__microsoft_docs_search",
+      "WebSearch",
+      "WebFetch(domain:microsoft.github.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(dotnet test:*)",
+      "WebFetch(domain:www.nuget.org)",
+      "Bash(dotnet add package:*)"
+    ]
+  }
+}

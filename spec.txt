@@ -1,0 +1,310 @@
+Build Spec: ProPresenter → Virtual MIDI Device → OBS Scene Switch Bridge (Windows)
+
+1) Goal
+
+Build a Windows-only .NET app that:
+•	Creates a virtual MIDI device/port (created by our code; no loopMIDI).
+•	ProPresenter (running on the same machine) selects that device and sends MIDI Note On messages to it (channel/note/velocity).
+•	The app maps (channel, note, velocity) → OBS Program scene name.
+•	The app sends the scene change over LAN to a separate OBS PC using obs-websocket.
+
+Must run as:
+•	Console app (dev)
+•	Windows Service (prod, no UI), logging to Windows Event Log.
+
+If OBS is disconnected: ignore the request (do not queue, do not block).
+
+⸻
+
+2) Runtime environment & dependencies
+
+2.1 Target runtime
+•	.NET 9, win-x64 publish target.
+
+2.2 Required installed prerequisite (on ProPresenter PC)
+•	Windows MIDI Services SDK Runtime + Tools (out-of-band Microsoft MIDI stack), required for programmatic virtual endpoint/device creation.
+•	App must detect absence at startup and exit with a clear log message.
+
+2.3 OBS prerequisite (on OBS PC)
+•	OBS Studio with obs-websocket v5 enabled (default port 4455).
+•	Password auth supported.
+
+2.4 Libraries
+•	Hosting: Microsoft.Extensions.Hosting
+•	Logging: Microsoft.Extensions.Logging, Microsoft.Extensions.Logging.EventLog
+•	JSON config: Microsoft.Extensions.Configuration.Json
+•	OBS websocket: obs-websocket-dotnet (v5 compatible)
+
+⸻
+
+3) Behavior requirements
+
+Always ensure only one instance is running.
+
+3.1 Virtual MIDI device creation
+	•	On startup, create a Virtual UMP Device (Windows MIDI Services) that appears to apps as a selectable MIDI device.
+	•	Device name is configurable; default: ProPresenter-OBS Bridge.
+	•	Product instance id is configurable and must be stable & unique; default: com.julmar.pp-obs-bridge.
+	•	Endpoint exists only while the app runs (acceptable).
+
+On failure to create endpoint:
+	•	Log Error (Event Log in service mode) and terminate with non-zero exit code.
+
+3.2 MIDI input handling
+	•	Receive MIDI messages from ProPresenter.
+	•	Required message type: Note On/Off with channel/note/velocity.
+	•	Extract:
+		•	channel: 1–16
+		•	note: 0–127
+		•	velocity: 0–127
+		•	timestamp (best-effort)
+
+Ignore other MIDI message types (Debug log optionally).
+
+3.3 Mapping rules
+Mappings are configured entries: (Note On/Off, Channel, Note, Velocity) -> SceneName
+
+Velocity rules:
+	•	Velocity = 0..127 means exact match
+	•	Velocity = -1 means wildcard velocity (“any velocity”)
+
+Match priority:
+	1.	Exact match on (note on/off, channel, note, velocity)
+	2.	If none, wildcard match on (note on/off, channel, note, Velocity=-1)
+	3.	If none, no action, output to debug log.
+
+3.4 OBS command behavior
+	•	Connect to OBS via obs-websocket.
+	•	Scene switching command: SetCurrentProgramScene(sceneName).
+	•	If OBS is disconnected/unavailable at the moment of a mapped MIDI event:
+	•	Drop the request immediately (no queue, no retry).
+	•	Log a rate-limited Warning: “OBS disconnected; dropped scene change request.”
+
+3.5 IgnoreIfAlreadyOnScene (optional optimization)
+Config flag: IgnoreIfAlreadyOnScene (default: false)
+	•	If false: always send SetCurrentProgramScene without any query.
+	•	If true: avoid sending if it would not change the scene.
+
+Implementation constraints for IgnoreIfAlreadyOnScene=true:
+	•	Must not add high latency per event.
+	•	Must not require a query on every event if we can avoid it.
+
+Preferred approach (cache-first):
+	1.	Maintain lastKnownProgramScene locally.
+	2.	Update it when:
+		•	We successfully call SetCurrentProgramScene(scene) (set lastKnownProgramScene = scene), and/or
+		•	We receive an OBS event indicating program scene changed (if the library exposes it), and/or
+		•	On initial connect, fetch current program scene once and set cache.
+	3.	For each mapped event:
+		•	If cache is known and equals target scene → do nothing.
+		•	If cache unknown → either:
+		•	Option A (recommended): fetch current program scene once on connect, then rely on cache.
+		•	Option B: send anyway (documented behavior). Choose A.
+
+Do not query current scene on every MIDI event.
+
+⸻
+
+4) Connectivity & name resolution
+
+4.1 OBS host by name
+Obs.Host may be:
+	•	IP address
+	•	Windows machine name (NetBIOS/DNS)
+	•	FQDN
+
+Implementation:
+	•	Resolve host using Dns.GetHostAddressesAsync(host) during connection attempts.
+	•	Prefer IPv4 first unless config indicates otherwise (optional).
+	•	Log resolved address on successful connect (Info).
+
+4.2 Reconnect strategy
+	•	Persistent connection.
+	•	Automatic reconnect on failure with exponential backoff:
+	•	1s, 2s, 4s… up to ReconnectMaxSeconds (default 30s)
+	•	Log transitions:
+		•	Connected
+		•	Disconnected
+		•	Retrying (rate-limited)
+
+⸻
+
+5) App modes and hosting
+
+5.1 Dual-mode executable
+Single executable supports:
+	•	Console run: ProPresenterObsBridge.exe (logs to console)
+	•	Service run: same executable installed as a Windows service (logs to Event Log)
+
+Use .NET Generic Host:
+	•	builder.Host.UseWindowsService()
+	•	Logging configuration depends on environment:
+	•	Console: Console logger enabled
+	•	Service: EventLog logger enabled (and optionally console disabled)
+
+No UI. Output to Console or service event log.
+
+⸻
+
+6) Configuration
+
+6.1 File
+	•	appsettings.json in the working directory next to the exe.
+	•	Support environment overrides optionally (e.g., appsettings.Production.json).
+
+6.2 Schema
+
+{
+	"Midi": {
+		"DeviceName": "ProPresenter→OBS Bridge",
+		"ProductInstanceId": "com.yourorg.pp-obs-bridge"
+	},
+	"Obs": {
+		"Host": "OBS-PC",
+		"Port": 4455,
+		"Password": "REDACTED",
+		"ReconnectMaxSeconds": 30
+	},
+	"Behavior": {
+		"ObsDisconnectedLogIntervalSeconds": 10,
+		"IgnoreIfAlreadyOnScene": false
+	},
+	"Mappings": [
+		{ "Note": "On", Channel": 1, "Note": 1, "Velocity": -1, "Scene": "Cam 1" },
+		{ "Note": "On", "Channel": 1, "Note": 2, "Velocity": 1, "Scene": "Cam 2" },
+		{ "Note": "On", "Channel": 1, "Note": 2, "Velocity": 2, "Scene": "Slides" }
+	]
+}
+
+Notes:
+	•	Secrets: never log password.
+
+6.3 Validation
+On startup validate:
+	•	Obs.Host non-empty
+	•	Obs.Port in 1..65535
+	•	Mappings non-empty
+	•	Each mapping:
+		•	Note "on", "off" (any case), if missing, assume "on".
+		•	Channel 1..16
+		•	Note 0..127
+		•	Velocity -1 or 0..127
+		•	Scene non-empty
+
+Invalid config → log Error and exit non-zero.
+
+Output the processed config to the console on startup.
+
+⸻
+
+7) Logging & observability
+
+7.1 Windows Event Log
+	•	Source name: ProPresenterObsBridge (register if needed; document admin requirement).
+	•	Provide consistent event IDs (suggested):
+		•	1000 Startup
+		•	1001 MIDI runtime missing (Fatal)
+		•	1002 Virtual MIDI device created
+		•	1003 OBS connected
+		•	1004 OBS disconnected
+		•	1005 OBS reconnect attempt
+		•	1300 Scene change sent
+		•	1301 Scene change failed
+		•	1400 Dropped due to OBS disconnected (rate-limited)
+
+7.2 Rate-limiting
+	•	When OBS disconnected, drop requests and log at most once every ObsDisconnectedLogIntervalSeconds.
+
+7.3 Verbosity
+	•	Default logs: Info+ in service mode.
+	•	Debug logs (optional): MIDI receipt + mapping decisions.
+
+⸻
+
+8) Error handling rules
+	•	MIDI runtime missing/unavailable: fail fast, log Error, exit.
+	•	Virtual device creation fails: fail fast, log Error, exit.
+	•	OBS connect fails: app continues running and keeps retrying.
+	•	OBS command fails: log Warning/Error, continue.
+	•	Unhandled exceptions: log Critical and terminate (service recovery should restart per Windows config).
+
+⸻
+
+9) Code structure (recommended)
+	•	Program.cs — host/bootstrap
+	•	Options/BridgeOptions.cs — strongly typed config
+	•	Midi/WindowsMidiEndpointManager.cs
+	•	Mapping/MappingEngine.cs
+	•	Obs/ObsClient.cs
+	•	Worker/BridgeWorker.cs — orchestrates MIDI → mapping → OBS
+	•	Util/RateLimiter.cs
+	•	Util/HostResolver.cs
+
+Key interfaces (to keep it testable):
+	•	IMidiSource with event NoteOnReceived(MidiNoteEvent e)
+	•	IMappingEngine with bool TryMap(MidiNoteEvent e, out string scene)
+	•	IObsClient with:
+	•	bool IsConnected { get; }
+	•	Task ConnectLoopAsync(CancellationToken ct)
+	•	Task<bool> SetProgramSceneAsync(string scene, CancellationToken ct)
+	•	Task<string?> GetCurrentProgramSceneAsync(...) (only used on connect / cache fill when IgnoreIfAlreadyOnScene=true)
+
+⸻
+
+10) Implementation notes
+
+10.1 Windows MIDI Services specifics
+	•	Use the Windows MIDI Services SDK initialization bootstrap for desktop apps.
+	•	Create a Virtual UMP Device and attach a message processing plugin so your app receives inbound data.
+	•	Ensure disposal order is clean on shutdown or any failure.
+
+Deliverable must include a short README section stating:
+	•	how to install Windows MIDI Services runtime/tools
+	•	how to verify the virtual device appears (e.g., in ProPresenter device list)
+
+10.2 OBS API usage
+	•	Use obs-websocket v5 request SetCurrentProgramScene with sceneName.
+	•	On connect, if IgnoreIfAlreadyOnScene=true:
+	•	fetch current scene once (if supported), set cache.
+	•	subscribe to scene-changed event if available to keep cache accurate (nice-to-have).
+
+⸻
+
+11) Deployment deliverables
+	•	ProPresenterObsBridge.exe (published)
+	•	appsettings.json template
+	•	install-service.ps1 / uninstall-service.ps1
+	•	install under LocalSystem
+	•	set recovery: restart on failure (3 times)
+	•	README:
+	•	prerequisites
+	•	configure ProPresenter to send to the virtual MIDI device
+	•	configure OBS websocket
+	•	troubleshooting (OBS down behavior, runtime missing, name resolution)
+
+⸻
+
+12) Acceptance tests (must pass)
+	1.	On a clean boot with runtime installed:
+		•	service starts
+		•	MIDI device appears in ProPresenter device list as configured name
+	2.	With OBS reachable:
+		•	sending mapped note triggers immediate program scene switch
+	3.	With OBS unreachable:
+		•	sending mapped note does nothing on OBS
+		•	app remains responsive
+		•	logs show rate-limited “dropped due to OBS disconnected”
+	4.	With IgnoreIfAlreadyOnScene=false:
+		•	repeated same note repeatedly sends scene change command every time
+	5.	With IgnoreIfAlreadyOnScene=true:
+		•	repeated same note does not send redundant command (after cache established)
+
+⸻
+
+13) Final clarifications baked in
+	•	Runs on ProPresenter PC, controls OBS PC over LAN.
+	•	ProPresenter uses device selection and sends Note On with channel/note/velocity.
+	•	Always targets Program Scene.
+	•	Mapping uses channel/note/velocity, with wildcard velocity supported via -1.
+	•	If OBS disconnected: ignore request (no queue).
+	•	OBS host can be name or IP.
