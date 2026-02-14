@@ -35,10 +35,16 @@ if (-not [System.Diagnostics.EventLog]::SourceExists($logSource)) {
 
 # Create the service
 Write-Host "Creating service '$ServiceName'..."
-sc.exe create $ServiceName binPath= "$resolvedPath" start= auto displayname= "ProPresenter-OBS Bridge"
+sc.exe create $ServiceName binPath= "$resolvedPath" start= delayed-auto displayname= "ProPresenter-OBS Bridge"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to create service. It may already exist. Use uninstall-service.ps1 first."
     exit 1
+}
+
+# Set service description
+sc.exe description $ServiceName "Creates a virtual MIDI device that bridges ProPresenter MIDI output to OBS scene changes. The virtual MIDI port is available when this service is running."
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Failed to set service description."
 }
 
 # Configure recovery: restart on first, second, and third failure (60s delay each)
