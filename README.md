@@ -161,7 +161,7 @@ To make the virtual MIDI device available automatically after login:
 
 1. Publish the application for macOS:
    ```bash
-   dotnet publish src/ProPresenterObsBridge -c Release -r osx-x64 --self-contained -o ~/bin/
+   dotnet publish src/ProPresenterObsBridge -c Release -r osx-x64 --self-contained -o /usr/local/bin/
    ```
 
 2. Run the installation script:
@@ -169,7 +169,7 @@ To make the virtual MIDI device available automatically after login:
    ./install-macos-service.sh
    ```
 
-3. When prompted, enter the path to the executable (default: `/usr/local/bin/ProPresenterObsBridge`)
+3. When prompted, enter the path to the executable (or press Enter to use the default: `/usr/local/bin/ProPresenterObsBridge`)
 
 The script will:
 - Install a LaunchAgent that runs automatically at login

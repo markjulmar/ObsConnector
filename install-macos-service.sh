@@ -42,8 +42,8 @@ echo "Installing LaunchAgent..."
 cp "$PLIST_SOURCE" "$PLIST_DEST"
 
 # Update the executable path in the plist
-# Using line-based replacement for reliability
-sed -i '' "10s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
+# Match the specific pattern to avoid fragility with line numbers
+sed -i '' "s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
 
 # Verify the replacement was successful
 if ! grep -q "<string>$EXEC_PATH</string>" "$PLIST_DEST"; then
@@ -54,10 +54,11 @@ fi
 
 # Update working directory to match executable location
 EXEC_DIR="$(dirname "$EXEC_PATH")"
-sed -i '' "14s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
+# Use a more specific pattern that includes the key to avoid replacing other paths
+sed -i '' "/<key>WorkingDirectory<\/key>/,/<string>/ s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
 
 # Verify the replacement was successful
-if ! grep -q "<string>$EXEC_DIR</string>" "$PLIST_DEST"; then
+if ! grep -A 1 "<key>WorkingDirectory</key>" "$PLIST_DEST" | grep -q "<string>$EXEC_DIR</string>"; then
     echo "Error: Failed to update working directory in plist"
     rm -f "$PLIST_DEST"
     exit 1
