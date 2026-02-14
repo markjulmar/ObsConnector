@@ -41,19 +41,19 @@ mkdir -p "$LAUNCH_AGENTS_DIR"
 echo "Installing LaunchAgent..."
 cp "$PLIST_SOURCE" "$PLIST_DEST"
 
-# Update the executable path in the plist
+# Update the executable path in the plist (line 10)
 if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "s|/usr/local/bin/ProPresenterObsBridge|$EXEC_PATH|g" "$PLIST_DEST"
+    sed -i '' "10s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
 else
-    sed -i "s|/usr/local/bin/ProPresenterObsBridge|$EXEC_PATH|g" "$PLIST_DEST"
+    sed -i "10s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
 fi
 
-# Update working directory to match executable location
+# Update working directory to match executable location (line 14)
 EXEC_DIR="$(dirname "$EXEC_PATH")"
 if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|g" "$PLIST_DEST"
+    sed -i '' "14s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
 else
-    sed -i "s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|g" "$PLIST_DEST"
+    sed -i "14s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
 fi
 
 # Load the LaunchAgent
