@@ -41,19 +41,26 @@ mkdir -p "$LAUNCH_AGENTS_DIR"
 echo "Installing LaunchAgent..."
 cp "$PLIST_SOURCE" "$PLIST_DEST"
 
-# Update the executable path in the plist (line 10)
-if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "10s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
-else
-    sed -i "10s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
+# Update the executable path in the plist
+# Using line-based replacement for reliability
+sed -i '' "10s|<string>/usr/local/bin/ProPresenterObsBridge</string>|<string>$EXEC_PATH</string>|" "$PLIST_DEST"
+
+# Verify the replacement was successful
+if ! grep -q "<string>$EXEC_PATH</string>" "$PLIST_DEST"; then
+    echo "Error: Failed to update executable path in plist"
+    rm -f "$PLIST_DEST"
+    exit 1
 fi
 
-# Update working directory to match executable location (line 14)
+# Update working directory to match executable location
 EXEC_DIR="$(dirname "$EXEC_PATH")"
-if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "14s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
-else
-    sed -i "14s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
+sed -i '' "14s|<string>/usr/local/bin</string>|<string>$EXEC_DIR</string>|" "$PLIST_DEST"
+
+# Verify the replacement was successful
+if ! grep -q "<string>$EXEC_DIR</string>" "$PLIST_DEST"; then
+    echo "Error: Failed to update working directory in plist"
+    rm -f "$PLIST_DEST"
+    exit 1
 fi
 
 # Load the LaunchAgent
@@ -67,7 +74,7 @@ echo ""
 echo "The service will:"
 echo "  • Start automatically at login"
 echo "  • Restart automatically if it crashes"
-echo "  • Create a virtual MIDI device '$MIDI_DEVICE_NAME' when running"
+echo "  • Create a virtual MIDI device when running"
 echo ""
 echo "Log files:"
 echo "  • Output: /usr/local/var/log/propresenter-obs-bridge.log"
