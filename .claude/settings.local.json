@@ -17,7 +17,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(dotnet test:*)",
       "WebFetch(domain:www.nuget.org)",
-      "Bash(dotnet add package:*)"
+      "Bash(dotnet add package:*)",
+      "WebFetch(domain:www.tobias-erichsen.de)",
+      "WebFetch(domain:devblogs.microsoft.com)"
     ]
   }
 }
